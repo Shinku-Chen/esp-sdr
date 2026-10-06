@@ -2,7 +2,7 @@
  *
  * Source: font8x8 by Daniel Hepper <daniel@hepper.net>, based on the public
  * domain VGA fonts of Marcel Sondaar / IBM. Public domain. Each glyph is 8
- * bytes, column-major: FONT8X8[c][x] bit y (LSB first) is pixel (x, y). */
+ * bytes, one byte per row, bit 0 is the leftmost pixel. */
 #pragma once
 
 #include <stdint.h>

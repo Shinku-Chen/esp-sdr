@@ -117,19 +117,21 @@ static void draw_text(uint16_t *buf, int width, int buf_h, int x0,
         if (ch < 0x20u || ch > 0x7Fu) {
             continue;
         }
+        /* font8x8 is row-major: glyph[row] bit column (LSB = leftmost). */
         const uint8_t *glyph = PASSPORT_FONT8X8[ch - 0x20u];
-        for (int gx = 0; gx < 8; gx++) {
-            for (int gy = 0; gy < 8; gy++) {
-                if ((glyph[gx] & (1u << gy)) == 0) {
+        for (int row = 0; row < 8; row++) {
+            const uint8_t bits = glyph[row];
+            for (int col = 0; col < 8; col++) {
+                if ((bits & (1u << col)) == 0) {
                     continue;
                 }
                 for (int sy = 0; sy < scale; sy++) {
-                    const int py = gy * scale + sy;
+                    const int py = row * scale + sy;
                     if (py < 0 || py >= buf_h) {
                         continue;
                     }
                     for (int sx = 0; sx < scale; sx++) {
-                        const int px = x + gx * scale + sx;
+                        const int px = x + col * scale + sx;
                         if (px < 0 || px >= width) {
                             continue;
                         }
