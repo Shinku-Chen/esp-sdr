@@ -20,6 +20,7 @@
 #include "rx_recalibration.h"
 #include "rx_tuning.h"
 #include "rx_lo.h"
+#include "passport_display.h"
 #include "esp_rom_sys.h"
 
 /* Pinned C3 librftest adctrig: 64 KiB at 0x3fcb0000, usage=2,
@@ -230,6 +231,10 @@ void app_main(void) {
         ESP_ERROR_CHECK(nvs_flash_erase());e=nvs_flash_init();
     }
     ESP_ERROR_CHECK(e);
+    /* Optional boot hint on the FoloToy AI Passport panel: tells the user to
+     * open the web viewer and connect over USB. Display only; it cannot change
+     * the receiver below, and a missing panel is ignored. */
+    passport_display_show_hint();
     usb_serial_jtag_driver_config_t usb={.tx_buffer_size=8192,.rx_buffer_size=8192};
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb));
     ESP_ERROR_CHECK(esp_event_loop_create_default());

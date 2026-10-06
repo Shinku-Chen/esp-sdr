@@ -18,9 +18,17 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 # CONFIG_ESP_WIFI_AMPDU_TX_ENABLED is not set
 # CONFIG_ESP_WIFI_AMPDU_RX_ENABLED is not set
 
-CONFIG_ESP_SDR_UART_ENABLED=y
+# The FoloToy AI Passport uses GPIO20/21 for the LCD (DC and backlight), so the
+# optional UART0 I/Q transport cannot be used on this board: keep native USB.
+# CONFIG_ESP_SDR_UART_ENABLED is not set
 CONFIG_ESP_SDR_UART_BAUD=2000000
 CONFIG_ESP_SDR_UART_TX_PIN=21
 CONFIG_ESP_SDR_UART_RX_PIN=20
 
 # CONFIG_ESP_CONSOLE_UART_DEFAULT is not set
+
+# The FoloToy AI Passport hint screen pulls in the SPI master driver, whose ISR
+# otherwise reserves IRAM and pushes the app's static data into the modem dump
+# bank. The panel is write-only and slow, so the ISR may live in flash here.
+# CONFIG_SPI_MASTER_IN_IRAM is not set
+# CONFIG_SPI_MASTER_ISR_IN_IRAM is not set

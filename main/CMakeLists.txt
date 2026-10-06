@@ -19,6 +19,12 @@ endif()
 set(receiver "${target_dir}/receiver.c")
 set(sources "common/burst_serial.c" "common/spectrum_stats.c" "common/rx_recalibration.c")
 set(dependencies esp_phy esp_wifi nvs_flash esp_timer esp_driver_uart esp-dsp)
+if(IDF_TARGET STREQUAL "esp32c3")
+    # FoloToy AI Passport: optional boot hint on the built-in LCD.
+    # Display support only; the receiver and protocol paths are unchanged.
+    list(APPEND sources "${target_dir}/passport_display.c")
+    list(APPEND dependencies esp_lcd esp_driver_spi esp_driver_gpio esp_driver_ledc)
+endif()
 option(RING_PROBE "Build bounded experimental ring diagnostics (never package)" OFF)
 if(IDF_TARGET STREQUAL "esp32c61" OR IDF_TARGET STREQUAL "esp32c6")
     list(APPEND sources "common/ring_capture.c")
