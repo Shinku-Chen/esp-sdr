@@ -21,6 +21,7 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "passport_font8x8.h"
@@ -46,6 +47,34 @@
 #define HINT_LINE_PX 16 /* line buffer height: the largest text scale */
 
 static const char *TAG = "passport_display";
+
+/* Color transfers are asynchronous and the source buffer must not be reused
+ * before on_color_trans_done fires, so every draw waits for this semaphore. */
+static SemaphoreHandle_t s_flush_done;
+
+static bool on_flush_done(esp_lcd_panel_io_handle_t io,
+                          esp_lcd_panel_io_event_data_t *event_data,
+                          void *user_ctx) {
+    (void)io;
+    (void)event_data;
+    (void)user_ctx;
+    BaseType_t hp_task_woken = pdFALSE;
+    if (s_flush_done) {
+        xSemaphoreGiveFromISR(s_flush_done, &hp_task_woken);
+    }
+    return hp_task_woken == pdTRUE;
+}
+
+static void draw_and_wait(esp_lcd_panel_handle_t panel, int x0, int y0,
+                          int x1, int y1, const void *buf) {
+    if (s_flush_done) {
+        (void)xSemaphoreTake(s_flush_done, 0); /* drop a stale completion */
+    }
+    (void)esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, buf);
+    if (s_flush_done) {
+        (void)xSemaphoreTake(s_flush_done, pdMS_TO_TICKS(200));
+    }
+}
 
 typedef struct {
     uint8_t cmd;
@@ -195,6 +224,13 @@ void passport_display_show_hint(void) {
         ESP_LOGE(TAG, "panel io init failed: %s", esp_err_to_name(e));
         return;
     }
+    s_flush_done = xSemaphoreCreateBinary();
+    if (s_flush_done) {
+        const esp_lcd_panel_io_callbacks_t cbs = {
+            .on_color_trans_done = on_flush_done,
+        };
+        (void)esp_lcd_panel_io_register_event_callbacks(io, &cbs, NULL);
+    }
 
     esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_dev_config_t dev = {
@@ -236,7 +272,7 @@ void passport_display_show_hint(void) {
     /* Clear the screen. */
     memset(line, 0, HINT_LCD_W * HINT_LINE_PX * 2);
     for (int y = 0; y < HINT_LCD_H; y += HINT_LINE_PX) {
-        (void)esp_lcd_panel_draw_bitmap(panel, 0, y, HINT_LCD_W, y + HINT_LINE_PX, line);
+        draw_and_wait(panel, 0, y, HINT_LCD_W, y + HINT_LINE_PX, line);
     }
 
     /* Draw the message, one text line at a time. */
@@ -250,7 +286,7 @@ void passport_display_show_hint(void) {
         }
         memset(line, 0, HINT_LCD_W * HINT_LINE_PX * 2);
         draw_text(line, HINT_LCD_W, HINT_LINE_PX, x0, l->text, l->scale, line_colors[i]);
-        (void)esp_lcd_panel_draw_bitmap(panel, 0, l->y, HINT_LCD_W, l->y + h, line);
+        draw_and_wait(panel, 0, l->y, HINT_LCD_W, l->y + h, line);
     }
     heap_caps_free(line);
     ESP_LOGI(TAG, "hint screen drawn");
