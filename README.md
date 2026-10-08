@@ -121,6 +121,10 @@ See [spectrum protocol and hardware validation](docs/spectrum.md) for the
 wire format, limitations and test results. The S3 ring diagnostic host tool
 is [tools/s3_ring.py](tools/s3_ring.py).
 
+GPIO outputs can be controlled from the browser’s GPIO section or the serial
+protocol. Firmware reports available pins; each supports high impedance (Z),
+low (0), or high (1). See [GPIO controls](docs/rx-controls.md#gpio-outputs).
+
 ## Commands and transport
 
 Connect over native USB or a 3.3 V USB-to-UART adapter with crossed TX/RX
@@ -129,6 +133,8 @@ request/response protocol: send newline-terminated ASCII commands and read
 text replies. Capture replies also include a binary I/Q payload.
 
 Query `INFO` and `CAPS` to identify the firmware and supported features.
+`VERSION?` reports the Git revision and UTC build date/time; see
+[firmware version reporting](docs/firmware-version.md).
 `LIMITS?` reports receive-control limits, `RANGE?` reports the tuning range,
 and `TRANSPORT?` identifies the active interface. Configure reception with
 `FREQ <MHz>`, `BANDWIDTH <MHz>` and `GAIN` commands.
@@ -254,6 +260,12 @@ See [receive-control details](docs/rx-controls.md).
       <a href="https://github.com/zodoczi">
         <img src="https://github.com/zodoczi.png?size=160" width="80" height="80" alt="Zoltan Doczi"><br>
         <b>Zoltan Doczi</b>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/14sea">
+        <img src="https://github.com/14sea.png?size=160" width="80" height="80" alt="14sea"><br>
+        <b>14sea</b>
       </a>
     </td>
   </tr>

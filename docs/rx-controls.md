@@ -54,6 +54,35 @@ curves include the digital-filter response.
 ESP32's widest settings exceed the characterized span;
 its numeric maximum uses code 8, while wide open selects code 0.
 
+## Receive calibration
+
+ESP-SDR uses the following calibration policy on all supported ESP32 families:
+
+- **IQ imbalance:** Calibrate at startup and reuse those corrections across
+  frequency changes. ESP-SDR does not repeat the loopback IQ sweep on retunes.
+  H2 retains four startup corrections, one for each RF gain group.
+- **DC offsets:** Remeasure at each new tuning frequency. If the PHY replaces
+  DC calibration in the background, remeasure at the requested frequency
+  before the next capture, even without another tuning command.
+- **Repeated frequency requests:** Requesting the same frequency does not
+  force another DC measurement unless the calibration has become stale.
+
+This describes calibration controlled by ESP-SDR. The PHY can still perform
+its own startup and background calibration, so “IQ calibration only once”
+is not an absolute guarantee for everything inside the chip. Startup and
+background calibration can still transmit; removing the retune IQ sweep does
+not make the whole firmware RF-silent.
+
+DC-measurement counters detect changes even when the PHY's temperature stamp
+stays unchanged. ESP32 and S2 compare their cached DC tables instead because
+internal PHY calls bypass the measurement wrappers. Recovery restores the
+receive settings and uses the PHY mutex to serialize DC measurement with
+tracking. The mutex is not held throughout acquisition: tracking can affect a
+capture already in progress, with recovery at the next capture preparation.
+S31 streaming stops acquisition, discards old DMA data, and starts a new stream
+epoch on recovery. H2 and both S31 profiles currently disable periodic PLL
+tracking; explicit PHY DC measurements still invalidate calibration.
+
 ## Rates and extended tuning
 
 C6 currently exposes only nominal 80 MS/s. Other tested clock/divider settings
@@ -66,14 +95,9 @@ attempt. Fractional MHz and values outside that software range are rejected.
 `main/common/rx_tuning.h` defines the shared limits. PLL lock is not a condition
 for accepting a tuning command.
 
-Out-of-channel requests calibrate on a standard channel before direct PLL
-programming. C5 calibrates at 2412 MHz for requests through 3000 MHz and at the
-nearest listed 20 MHz Wi-Fi channel centre above 3000 MHz (5180–5825 MHz).
-Ties select the lower channel. This reduces the DC offset and resulting AGC
-oscillation caused by using 5180 MHz throughout the upper band. Its direct path uses
-`phy_set_rf_freq_offset` with the calibrated crystal selector (`phy_param[49]`)
-to program the requested frequency after calibration.
-S31 likewise keeps arbitrary frequencies out of channel calibration.
+C5 programs the requested frequency through `phy_set_chanfreq` after the DC
+measurement. Other backends may select a standard channel before direct PLL
+programming; S31 also keeps arbitrary frequencies out of channel calibration.
 
 ### Experimental lower-band LO conversion
 
@@ -140,3 +164,39 @@ S2 reserves 48 KiB at `0x3fff0000–0x3fffc000` and its IRAM aliases, leaving th
 top bank accessible to ROM USB. Its 12,284-sample maximum leaves four overrun
 canaries. Source 0 supplies signed 10-bit I/Q; clock bits 15/16 select nominal
 40/16 MS/s from the 80 MS/s source.
+
+## GPIO outputs
+
+Burst firmware advertises `GPIO` in `CAPS`. `GPIO?` returns a single line of
+available output pins and their configured states, ordered by chip GPIO number:
+
+```text
+GPIO 0:Z 1:Z 2:Z 3:0 4:Z 14:1
+```
+
+The example is illustrative; clients must use the returned list rather than
+infer pins from the chip name. An empty list is returned as `GPIO`.
+
+`GPIO <pin> <Z|0|1>` changes one pin and replies `OK GPIO <pin> <state>`.
+Invalid/unavailable pins, invalid states, and malformed requests return
+`ERR gpio_args`; a driver failure returns `ERR gpio_io`.
+
+- `Z`: high impedance, output and internal pull-up/pull-down disabled.
+- `0`: push-pull output low.
+- `1`: push-pull output high.
+
+All advertised pins are initialized to Z once at firmware startup. Queries and
+client connections do not change them. Settings survive retuning and client
+disconnection, but reset to Z on reboot; they are not saved to flash. Responses
+report the configured drive state, not the measured voltage at the pad.
+
+Availability excludes input-only/nonexistent GPIOs, dedicated flash/PSRAM and
+memory-supply pads (conservatively including optional memory), ESP-IDF-reserved
+pins, native USB pins, and both UART pins when the UART transport is enabled.
+Pin numbers are silicon GPIO numbers, not board connector labels. Firmware
+cannot discover board wiring or which pads a particular module exposes.
+
+GPIO commands obey the same serial ownership checks as receiver commands.
+Clients must finish a burst, or stop and drain a spectrum stream, before sending
+one. The browser provides a collapsed GPIO section at the bottom of the sidebar,
+with a Z/0/1 button group for each available pin, and handles this sequencing.

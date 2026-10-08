@@ -57,6 +57,23 @@ class FirmwareExport(unittest.TestCase):
         self.assertEqual(manifest['variants']['esp32s3']['build_date'], '2026-09-28')
         self.assertIsNone(exporter.firmware_build_date(b'not an app'))
 
+    def test_embedded_version_overrides_descriptor_date(self):
+        record = dict(revision='a'*40, build_date='2026-10-06',
+                      build_timestamp='2026-10-06T22:12:34Z', profile='esp32s3')
+        (self.build / 'app.bin').write_bytes(b'ESP-SDR-VERSION:'+json.dumps(record).encode()+b'\0')
+        variant = json.loads(self.export().read_text())['variants']['esp32s3']
+        self.assertEqual(variant['git_revision'], record['revision'])
+        self.assertEqual(variant['build_timestamp'], record['build_timestamp'])
+        self.assertEqual(variant['build_date'], record['build_date'])
+
+    def test_embedded_profile_mismatch_rejected(self):
+        record = dict(revision='a'*40, build_date='2026-10-06',
+                      build_timestamp='2026-10-06T22:12:34Z', profile='esp32c61')
+        (self.build / 'app.bin').write_bytes(b'ESP-SDR-VERSION:'+json.dumps(record).encode()+b'\0')
+        with self.assertRaisesRegex(ValueError, 'profile'):
+            self.export()
+        self.assertFalse((self.root / 'output').exists())
+
     def test_probe_firmware_rejected(self):
         for flag in ['RING_PROBE','SAMPLE_RATE_PROBE','FILTER_REGISTER_PROBE','S2_RF_PROBE','S3_RF_PROBE','C5_TUNE_PROBE']:
             with self.subTest(flag=flag):

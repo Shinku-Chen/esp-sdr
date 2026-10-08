@@ -12,6 +12,8 @@ class C6Commands(unittest.TestCase):
         handler=source[source.index('static void handle_command(char *line) {'):]
         stub=r'''
 #include <assert.h>
+#include <stdbool.h>
+bool rx_recalibration_stale(void) { return false; }
 void rx_recalibrate(unsigned mhz) {}
 #include <stdbool.h>
 #include <inttypes.h>
@@ -39,6 +41,8 @@ static bool spectrum_command(const char *s,unsigned f,void *acquire){return fals
 static bool ring_test(const char *s){return false;}
 static void reply(const char *s) { snprintf(response,sizeof(response),"%s",s); }
 static bool gain_command(const char *s) { return false; }
+static bool burst_version_command(const char *s) { return false; }
+static bool burst_gpio_command(const char *s) { return false; }
 static bool limits_command(const char *s) { return false; }
 static bool capture(unsigned n,unsigned d,unsigned f) { ++captures;last_samples=n;last_format=f;return true; }
 static void vTaskDelay(int ticks) {}

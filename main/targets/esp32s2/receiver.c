@@ -18,6 +18,8 @@
 #include "soc/soc.h"
 
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "spectrum.h"
 #include "rx_recalibration.h"
 #include "rx_tuning.h"
@@ -47,7 +49,7 @@ extern void set_chanfreq(unsigned,unsigned);
 extern void rom_set_rf_freq_offset(unsigned,unsigned,int);
 static void s2_tune(unsigned mhz) {
     static unsigned calibrated_mhz;
-    if (calibrated_mhz != mhz) {
+    if (calibrated_mhz != mhz || rx_recalibration_stale()) {
         rx_recalibrate(mhz);
         calibrated_mhz = mhz;
     }
@@ -101,7 +103,7 @@ static void reply(const char *s) { (void)send_bytes(s,strlen(s)); }
 #include "burst_limits.h"
 
 static void prepare_rx(void) {
-    if(rx_ready)return;
+    if(rx_ready && !rx_recalibration_stale())return;
     if(rx_prep==1){esp_wifi_set_channel(1,WIFI_SECOND_CHAN_NONE);force_rx_gain(1,55,0);rx_ready=true;return;}
     if(rx_prep==2){esp_wifi_set_channel(1,WIFI_SECOND_CHAN_NONE);rx_ready=true;return;}
     s2_tune(frequency_mhz);
@@ -214,6 +216,8 @@ static bool capture(unsigned n,unsigned divider,unsigned format) {
 
 
 static void handle_command(char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
 #ifdef RING_PROBE
     if(ring_probe_command(line)) return;
 #endif
@@ -251,7 +255,7 @@ static void handle_command(char *line) {
         else if(!strcmp(line,"ADCCLOCK?")){char h[64];snprintf(h,sizeof(h),"ADC %u\n",rom_chip_i2c_readReg(0x66,0,4));reply(h);}
 #endif
         else if(!strcmp(line,"CAPS")) {
-            reply("CAPS SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE "
+            reply("CAPS VERSION GPIO SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE "
 #if CONFIG_ESP_SDR_UART_ENABLED
                   "DUALSERIAL "
 #endif

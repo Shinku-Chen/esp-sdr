@@ -15,6 +15,8 @@
 #include "soc/soc.h"
 
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "spectrum.h"
 #include "rx_recalibration.h"
 #include "rx_tuning.h"
@@ -42,7 +44,7 @@ static bool frequency_valid(unsigned mhz) {
 }
 static void tune_rx(unsigned mhz) {
     static unsigned calibrated_mhz;
-    if (calibrated_mhz != mhz) {
+    if (calibrated_mhz != mhz || rx_recalibration_stale()) {
         rx_recalibrate(mhz);
         calibrated_mhz = mhz;
     }
@@ -59,7 +61,7 @@ static void reply(const char *s) { (void)send_bytes(s,strlen(s)); }
 #include "burst_limits.h"
 
 static void prepare_rx(void) {
-    if(rx_ready)return;
+    if(rx_ready && !rx_recalibration_stale())return;
     tune_rx(frequency_mhz);
     stop_tx_tone(1);
     pbus_workmode();
@@ -174,6 +176,8 @@ static bool capture(unsigned n,unsigned divider,unsigned format) {
 }
 
 static void handle_command(char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
     if (spectrum_command(line, frequency_mhz, spectrum_acquire)) return;
     if(!strcmp(line,"TRANSPORT?")) {
         char answer[64];
@@ -198,7 +202,7 @@ static void handle_command(char *line) {
         if(ok)reply("END\n");
     }
     else if(!strcmp(line,"CAPS")) {
-        reply("CAPS SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE "
+        reply("CAPS VERSION GPIO SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE "
 #if CONFIG_ESP_SDR_UART_ENABLED
               "DUALSERIAL "
 #endif
@@ -235,6 +239,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb));
     esp_phy_enable(PHY_MODEM_BT);
     rftest_open_clk();
+    rx_h2_calibrate_iq_at_boot();
     prepare_rx();
     esp_log_level_set("*",ESP_LOG_NONE);
     (void)usb_serial_jtag_wait_tx_done(pdMS_TO_TICKS(100));

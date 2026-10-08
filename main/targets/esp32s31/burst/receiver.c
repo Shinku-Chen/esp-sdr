@@ -9,6 +9,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "spectrum.h"
 #include "rx_tuning.h"
 #include "rx_bandwidth.h"
@@ -100,6 +102,7 @@ extern unsigned char phy_param[];
 extern void burst_gain_mirror(int);
 static unsigned gain_init, gain_threshold;
 static void prepare_rx(void) {
+    if (rx_recalibration_stale()) s31_tune(frequency_mhz);
     phy_pbus_workmode();
     phy_pbus_xpd_tx_off();
     phy_pbus_xpd_rx_on(1);
@@ -312,6 +315,8 @@ static bool capture_rate(unsigned n, unsigned rate, unsigned format) {
 }
 
 static void command(const char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
 #ifdef RING_PROBE
     if(ring_probe_command(line))return;
 #endif
@@ -321,7 +326,7 @@ static void command(const char *line) {
     uint64_t nonce;
     char extra;
     if (!strcmp(line, "INFO")) reply("S31SDR 6 burst 16380\n");
-    else if (!strcmp(line, "CAPS")) reply("CAPS SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE DUALSERIAL TUNEEXT RX40 LPFANA GAIN HWAGC IQ8\n");
+    else if (!strcmp(line, "CAPS")) reply("CAPS VERSION GPIO SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE DUALSERIAL TUNEEXT RX40 LPFANA GAIN HWAGC IQ8\n");
     else if (sscanf(line, "BANDWIDTH %u %c", &n, &extra)==1 &&
              (!n || (n>=RX_BANDWIDTH_MIN && n<=RX_BANDWIDTH_MAX))) {
         rx_filter=rx_bandwidth_dcap(n); reply("OK\n");

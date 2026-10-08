@@ -16,6 +16,8 @@
 #include "soc/soc.h"
 
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "spectrum.h"
 #include "rx_recalibration.h"
 #include "rx_tuning.h"
@@ -60,7 +62,7 @@ static bool frequency_valid(unsigned mhz) {
 }
 static void tune_rx(unsigned mhz) {
     static unsigned calibrated_mhz;
-    if (calibrated_mhz != mhz) {
+    if (calibrated_mhz != mhz || rx_recalibration_stale()) {
         rx_recalibrate(mhz);
         calibrated_mhz = mhz;
     }
@@ -76,7 +78,7 @@ static void reply(const char *s) { (void)send_bytes(s,strlen(s)); }
 #include "burst_limits.h"
 
 static void prepare_rx(void) {
-    if(rx_ready)return;
+    if(rx_ready && !rx_recalibration_stale())return;
     tune_rx(frequency_mhz);
     stop_tx_tone(1);
     rom_pbus_workmode();
@@ -169,6 +171,8 @@ static bool capture(unsigned n,unsigned divider,unsigned format) {
 }
 
 static void handle_command(char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
 #ifdef RING_PROBE
     if(ring_probe_command(line)) return;
 #endif
@@ -196,7 +200,7 @@ static void handle_command(char *line) {
         if(ok)reply("END\n");
     }
     else if(!strcmp(line,"CAPS")) {
-        reply("CAPS SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE "
+        reply("CAPS VERSION GPIO SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE "
 #if CONFIG_ESP_SDR_UART_ENABLED
               "DUALSERIAL "
 #endif

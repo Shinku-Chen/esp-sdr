@@ -17,13 +17,13 @@ if(IDF_TARGET STREQUAL "esp32s31")
     list(APPEND target_includes "${target_dir}")
 endif()
 set(receiver "${target_dir}/receiver.c")
-set(sources "common/burst_serial.c" "common/spectrum_stats.c" "common/rx_recalibration.c")
-set(dependencies esp_phy esp_wifi nvs_flash esp_timer esp_driver_uart esp-dsp)
+set(sources "common/burst_serial.c" "common/burst_gpio.c" "common/burst_version.c" "common/spectrum_stats.c" "common/rx_recalibration.c" "common/rx_calibration_state.c")
+set(dependencies esp_driver_gpio esp_hw_support esp_phy esp_wifi nvs_flash esp_timer esp_driver_uart esp-dsp)
 if(IDF_TARGET STREQUAL "esp32c3")
     # FoloToy AI Passport: optional boot hint on the built-in LCD.
     # Display support only; the receiver and protocol paths are unchanged.
     list(APPEND sources "${target_dir}/passport_display.c")
-    list(APPEND dependencies esp_lcd esp_driver_spi esp_driver_gpio esp_driver_ledc)
+    list(APPEND dependencies esp_lcd esp_driver_spi esp_driver_ledc)
 endif()
 option(RING_PROBE "Build bounded experimental ring diagnostics (never package)" OFF)
 if(IDF_TARGET STREQUAL "esp32c61" OR IDF_TARGET STREQUAL "esp32c6")
@@ -73,6 +73,18 @@ idf_component_register(SRCS "${receiver}" ${sources}
     PRIV_INCLUDE_DIRS "common" ${target_includes} "diagnostics"
     REQUIRES ${dependencies})
 
+# Regenerate at build time (not only CMake configure time). The embedded record
+# is also the artifact exporter's source of revision and UTC build time.
+idf_build_get_property(version_python PYTHON)
+set(version_header "${CMAKE_CURRENT_BINARY_DIR}/generated/build_version.h")
+add_custom_target(esp_sdr_build_version
+    COMMAND "${version_python}" "${PROJECT_DIR}/tools/generate_version.py"
+        --root "${PROJECT_DIR}" --profile "${IDF_TARGET}" --output "${version_header}"
+    BYPRODUCTS "${version_header}"
+    VERBATIM)
+add_dependencies(${COMPONENT_LIB} esp_sdr_build_version)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # Keep the linker guard beside the backend whose SRAM aperture it protects.
 target_link_options(${COMPONENT_LIB} INTERFACE
     "-T${CMAKE_CURRENT_LIST_DIR}/${target_dir}/sram_guard.ld")
@@ -95,6 +107,9 @@ elseif(IDF_TARGET STREQUAL "esp32c61" OR IDF_TARGET STREQUAL "esp32s31")
 else()
     target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=chip_v7_set_chan_ana")
 endif()
+
+include("common/rx_calibration_link.cmake")
+
 if(IDF_TARGET STREQUAL "esp32h2")
     target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=write_gain_mem")
 endif()

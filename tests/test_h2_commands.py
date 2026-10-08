@@ -15,9 +15,13 @@ class H2Commands(unittest.TestCase):
         handler = source[source.index('static void handle_command('):source.index('void app_main(')]
         stub = r'''
 #include <assert.h>
+#include <stdbool.h>
+bool rx_recalibration_stale(void) { return false; }
 void rx_recalibrate(unsigned mhz) {}
 #include "rx_tuning.h"
 #include <stdbool.h>
+static bool burst_version_command(const char *s) { return false; }
+static bool burst_gpio_command(const char *s) { return false; }
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>

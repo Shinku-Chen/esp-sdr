@@ -8,6 +8,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "spectrum.h"
 #include "rx_recalibration.h"
 #include "rx_tuning.h"
@@ -72,7 +74,13 @@ static void reply(const char *fmt, ...) {
     if (length > 0) burst_serial_send(text, length < sizeof(text) ? length : sizeof(text)-1);
 }
 
+static void tune_rx(unsigned mhz);
+static void apply_gain(void);
 static void prepare_rx(void) {
+    if (rx_recalibration_stale()) {
+        tune_rx(frequency_mhz);
+        apply_gain();
+    }
     rom_pbus_workmode();
     rom_pbus_xpd_tx_off();
     rom_pbus_xpd_rx_on(1);
@@ -87,6 +95,7 @@ static bool acquire_iq(unsigned n, unsigned source, unsigned clock, unsigned *ca
         reply("ERR args\n");
         return false;
     }
+    if (rx_recalibration_stale()) prepare_rx();
     REG_WRITE(DUMP_CTRL, 0);
     for (unsigned j = 0; j < CAPACITY; j++) samples[j] = SENTINEL;
     filter_apply();
@@ -169,7 +178,7 @@ extern void rom_set_rf_freq_offset(unsigned crystal, unsigned mhz, int offset);
 
 static void tune_rx(unsigned mhz) {
     static unsigned calibrated_mhz;
-    if (calibrated_mhz != mhz) {
+    if (calibrated_mhz != mhz || rx_recalibration_stale()) {
         rx_recalibrate(mhz);
         calibrated_mhz = mhz;
     }
@@ -201,6 +210,8 @@ static bool capture_rate(unsigned n, unsigned rate, unsigned format) {
 
 
 static void command(const char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
 #ifdef RING_PROBE
     if(ring_probe_command(line)) return;
 #endif
@@ -209,7 +220,7 @@ static void command(const char *line) {
     uint64_t nonce;
     char extra;
     if (!strcmp(line, "INFO")) reply("ESP32SDR 6 burst 16380\n");
-    else if (!strcmp(line, "CAPS")) reply("CAPS SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE TUNEEXT RX40 RX16 LPFANA GAIN HWAGC IQ8\n");
+    else if (!strcmp(line, "CAPS")) reply("CAPS VERSION GPIO SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS SERIALLEASE TUNEEXT RX40 RX16 LPFANA GAIN HWAGC IQ8\n");
     else if (sscanf(line, "BANDWIDTH %u %c", &n, &extra)==1 &&
              (!n || (n>=RX_BANDWIDTH_MIN && n<=RX_BANDWIDTH_MAX))) {
         rx_filter=rx_bandwidth_dcap(n); reply("OK\n");

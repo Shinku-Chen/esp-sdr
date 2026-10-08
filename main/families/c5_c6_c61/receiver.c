@@ -25,6 +25,8 @@
 #endif
 #include "chip.h"
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "spectrum.h"
 #if CONFIG_IDF_TARGET_ESP32C61 || CONFIG_IDF_TARGET_ESP32C6
 #include "ring_capture.h"
@@ -77,7 +79,7 @@ static void reply(const char *s) { (void)send_bytes(s,strlen(s)); }
 
 static void prepare_rx(void) {
     static unsigned calibrated_mhz;
-    if(rx_ready)return;
+    if(rx_ready && !rx_recalibration_stale())return;
 #if CONFIG_IDF_TARGET_ESP32C61
     burst_gain_mirror(-1);
     if(gain_defaults_saved) {
@@ -86,7 +88,7 @@ static void prepare_rx(void) {
         gain_defaults_saved=false;
     }
 #endif
-    if (calibrated_mhz != frequency_mhz) {
+    if (calibrated_mhz != frequency_mhz || rx_recalibration_stale()) {
         rx_recalibrate(frequency_mhz);
         calibrated_mhz = frequency_mhz;
     }
@@ -288,6 +290,8 @@ void app_main(void) {
 }
 
 static void handle_command(char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
 #ifdef RING_PROBE
     if(ring_probe_command(line)) return;
 #endif
@@ -332,7 +336,7 @@ static void handle_command(char *line) {
         else if(sscanf(line,"ADCCLOCK %u %c",&n,&extra)==1 && (n<2 || n==4)) {probe_adc=n;reply("OK\n");}
 #endif
         else if(!strcmp(line,"CAPS")) {
-            reply("CAPS SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS GAIN HWAGC IQ8 SERIALLEASE"
+            reply("CAPS VERSION GPIO SPEC SPECN SPECCAPS SPECSTAT DCT UARTBAUD RXLIMITS GAIN HWAGC IQ8 SERIALLEASE"
                   " TUNEEXT"
 #if !CONFIG_IDF_TARGET_ESP32C6
                   " LPF LPF12"

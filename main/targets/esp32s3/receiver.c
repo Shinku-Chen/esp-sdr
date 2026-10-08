@@ -19,6 +19,8 @@
 #include "soc/soc.h"
 
 #include "burst_serial.h"
+#include "burst_gpio.h"
+#include "burst_version.h"
 #include "rx_recalibration.h"
 #include "rx_tuning.h"
 #include "rx_lo.h"
@@ -49,7 +51,7 @@ static void s3_tune(unsigned mhz);
 static int s3_fofs; /* FOFS: PLL offset in kHz, applied from the next tune */
 static void s3_tune(unsigned mhz) {
     static unsigned calibrated_mhz;
-    if (calibrated_mhz != mhz) {
+    if (calibrated_mhz != mhz || rx_recalibration_stale()) {
         rx_recalibrate(mhz);
         calibrated_mhz = mhz;
     }
@@ -96,7 +98,7 @@ static void reply(const char *s) { (void)send_bytes(s,strlen(s)); }
 #include "burst_limits.h"
 
 static void prepare_rx(void) {
-    if(rx_ready)return;
+    if(rx_ready && !rx_recalibration_stale())return;
     if(rx_prep==1){esp_wifi_set_channel(1,WIFI_SECOND_CHAN_NONE);force_rx_gain(1,55,0);rx_ready=true;return;}
     if(rx_prep==2){esp_wifi_set_channel(1,WIFI_SECOND_CHAN_NONE);rx_ready=true;return;}
     s3_tune(frequency_mhz);
@@ -314,6 +316,8 @@ static bool ring_command(const char *line) {
 }
 
 static void handle_command(char *line) {
+    if (burst_version_command(line)) return;
+    if (burst_gpio_command(line)) return;
     if(!strcmp(line,"TRANSPORT?")) {
         char answer[64];
         snprintf(answer,sizeof(answer),"TRANSPORT %s %u\n",
@@ -348,7 +352,7 @@ static void handle_command(char *line) {
         else if(!strcmp(line,"ADCCLOCK?")){char h[64];snprintf(h,sizeof(h),"ADC %u\n",rom_chip_i2c_readReg(0x66,0,4));reply(h);}
 #endif
         else if(!strcmp(line,"CAPS")) {
-            reply("CAPS UARTBAUD RXLIMITS SERIALLEASE "
+            reply("CAPS VERSION GPIO UARTBAUD RXLIMITS SERIALLEASE "
 #if CONFIG_ESP_SDR_UART_ENABLED
                   "DUALSERIAL "
 #endif
